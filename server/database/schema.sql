@@ -9,6 +9,19 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Dojos/Locations table
+CREATE TABLE IF NOT EXISTS dojos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    address TEXT,
+    phone TEXT,
+    email TEXT,
+    primary_instructor_id INTEGER,
+    active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (primary_instructor_id) REFERENCES users (id)
+);
+
 -- Updated Members table with comprehensive fields
 CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,6 +37,7 @@ CREATE TABLE IF NOT EXISTS members (
     guardian_phone TEXT,
     guardian_email TEXT,
     guardian_relationship TEXT,
+    guardian_required BOOLEAN DEFAULT 0,
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
     emergency_contact_relationship TEXT,
@@ -33,11 +47,13 @@ CREATE TABLE IF NOT EXISTS members (
     social_media_permission BOOLEAN DEFAULT 0,
     notes TEXT,
     current_grade_id INTEGER,
+    main_dojo_id INTEGER,
     join_date DATE DEFAULT (date('now')),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (current_grade_id) REFERENCES grades (id)
+    FOREIGN KEY (current_grade_id) REFERENCES grades (id),
+    FOREIGN KEY (main_dojo_id) REFERENCES dojos (id)
 );
 
 -- Grades table for belt system
@@ -148,7 +164,9 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE INDEX IF NOT EXISTS idx_members_name ON members (last_name, first_name);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members (status);
 CREATE INDEX IF NOT EXISTS idx_members_grade ON members (current_grade_id);
+CREATE INDEX IF NOT EXISTS idx_members_dojo ON members (main_dojo_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance (date);
 CREATE INDEX IF NOT EXISTS idx_attendance_member ON attendance (member_id);
 CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
+CREATE INDEX IF NOT EXISTS idx_dojos_active ON dojos (active);

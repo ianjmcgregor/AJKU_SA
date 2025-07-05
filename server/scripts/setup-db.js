@@ -46,6 +46,18 @@ function insertSampleData() {
     db.run(`INSERT INTO users (email, password, role) VALUES (?, ?, ?)`, 
         ['instructor@dojo.com', instructorPassword, 'instructor']);
     
+    // Create dojo locations
+    const dojos = [
+        { name: 'Allendale Dojo', address: 'Allendale Community Centre, Allendale SA', phone: '08 8XXX XXXX', email: 'allendale@ajku.com.au' },
+        { name: 'Millicent Dojo', address: 'Millicent Community Centre, Millicent SA', phone: '08 8XXX XXXX', email: 'millicent@ajku.com.au' },
+        { name: 'Mount Gambier Dojo', address: 'Mount Gambier Community Centre, Mount Gambier SA', phone: '08 8XXX XXXX', email: 'mountgambier@ajku.com.au' }
+    ];
+    
+    dojos.forEach(dojo => {
+        db.run(`INSERT INTO dojos (name, address, phone, email, primary_instructor_id, active) VALUES (?, ?, ?, ?, ?, ?)`,
+            [dojo.name, dojo.address, dojo.phone, dojo.email, 2, 1]); // instructor_id = 2
+    });
+    
     // Create grades (karate belts)
     const grades = [
         { name: 'White Belt', color: 'white', order_rank: 1, description: 'Beginner level' },

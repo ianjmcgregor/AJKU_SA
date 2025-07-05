@@ -145,14 +145,13 @@ app.get('/api/members', authenticateToken, (req, res) => {
     let query = `
         SELECT m.*, g.name as current_grade, g.color as grade_color
         FROM members m
-        LEFT JOIN member_grades mg ON m.id = mg.member_id AND mg.is_current = TRUE
-        LEFT JOIN grades g ON mg.grade_id = g.id
+        LEFT JOIN grades g ON m.current_grade_id = g.id
         WHERE 1=1
     `;
     const params = [];
 
     if (status) {
-        query += ' AND m.membership_status = ?';
+        query += ' AND m.status = ?';
         params.push(status);
     }
 
@@ -178,8 +177,7 @@ app.get('/api/members/:id', authenticateToken, (req, res) => {
     db.get(`
         SELECT m.*, g.name as current_grade, g.color as grade_color
         FROM members m
-        LEFT JOIN member_grades mg ON m.id = mg.member_id AND mg.is_current = TRUE
-        LEFT JOIN grades g ON mg.grade_id = g.id
+        LEFT JOIN grades g ON m.current_grade_id = g.id
         WHERE m.id = ?
     `, [id], (err, member) => {
         if (err) {
@@ -195,39 +193,128 @@ app.get('/api/members/:id', authenticateToken, (req, res) => {
 app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor']), [
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
+    body('date_of_birth').isISO8601().toDate(),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
-    const memberData = req.body;
-    const fields = Object.keys(memberData);
-    const placeholders = fields.map(() => '?').join(', ');
-    const values = fields.map(field => memberData[field]);
+    const {
+        first_name, last_name, other_names, date_of_birth, gender,
+        address, phone_number, email, guardian_name, guardian_phone,
+        guardian_email, guardian_relationship, emergency_contact_name,
+        emergency_contact_phone, emergency_contact_relationship,
+        medical_conditions, special_needs, photo_permission,
+        social_media_permission, notes, current_grade_id
+    } = req.body;
 
-    db.run(`INSERT INTO members (${fields.join(', ')}) VALUES (${placeholders})`,
-        values, function(err) {
+    db.run(`
+        INSERT INTO members (
+            first_name, last_name, other_names, date_of_birth, gender,
+            address, phone_number, email, guardian_name, guardian_phone,
+            guardian_email, guardian_relationship, emergency_contact_name,
+            emergency_contact_phone, emergency_contact_relationship,
+            medical_conditions, special_needs, photo_permission,
+            social_media_permission, notes, current_grade_id, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `, [
+        first_name, last_name, other_names, date_of_birth, gender,
+        address, phone_number, email, guardian_name, guardian_phone,
+        guardian_email, guardian_relationship, emergency_contact_name,
+        emergency_contact_phone, emergency_contact_relationship,
+        medical_conditions, special_needs, photo_permission ? 1 : 0,
+        social_media_permission ? 1 : 0, notes, current_grade_id
+    ], function(err) {
+        if (err) {
+            console.error('Error creating member:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        
+        // Get the created member
+        db.get(`
+            SELECT m.*, g.name as current_grade, g.color as grade_color
+            FROM members m
+            LEFT JOIN grades g ON m.current_grade_id = g.id
+            WHERE m.id = ?
+        `, [this.lastID], (err, newMember) => {
             if (err) {
                 return res.status(500).json({ error: 'Database error' });
             }
-            res.status(201).json({ id: this.lastID, ...memberData });
+            res.status(201).json(newMember);
         });
+    });
 });
 
-app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
+app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('first_name').notEmpty().trim(),
+    body('last_name').notEmpty().trim(),
+    body('date_of_birth').isISO8601().toDate(),
+    body('email').optional().isEmail().normalizeEmail()
+], handleValidationErrors, (req, res) => {
     const { id } = req.params;
-    const memberData = req.body;
-    const fields = Object.keys(memberData);
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    const values = [...fields.map(field => memberData[field]), id];
+    const {
+        first_name, last_name, other_names, date_of_birth, gender,
+        address, phone_number, email, guardian_name, guardian_phone,
+        guardian_email, guardian_relationship, emergency_contact_name,
+        emergency_contact_phone, emergency_contact_relationship,
+        medical_conditions, special_needs, photo_permission,
+        social_media_permission, notes, current_grade_id, status
+    } = req.body;
 
-    db.run(`UPDATE members SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        values, function(err) {
+    db.run(`
+        UPDATE members SET
+            first_name = ?, last_name = ?, other_names = ?, date_of_birth = ?, gender = ?,
+            address = ?, phone_number = ?, email = ?, guardian_name = ?, guardian_phone = ?,
+            guardian_email = ?, guardian_relationship = ?, emergency_contact_name = ?,
+            emergency_contact_phone = ?, emergency_contact_relationship = ?,
+            medical_conditions = ?, special_needs = ?, photo_permission = ?,
+            social_media_permission = ?, notes = ?, current_grade_id = ?, status = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+    `, [
+        first_name, last_name, other_names, date_of_birth, gender,
+        address, phone_number, email, guardian_name, guardian_phone,
+        guardian_email, guardian_relationship, emergency_contact_name,
+        emergency_contact_phone, emergency_contact_relationship,
+        medical_conditions, special_needs, photo_permission ? 1 : 0,
+        social_media_permission ? 1 : 0, notes, current_grade_id, status || 'active',
+        id
+    ], function(err) {
+        if (err) {
+            console.error('Error updating member:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Member not found' });
+        }
+        
+        // Get the updated member
+        db.get(`
+            SELECT m.*, g.name as current_grade, g.color as grade_color
+            FROM members m
+            LEFT JOIN grades g ON m.current_grade_id = g.id
+            WHERE m.id = ?
+        `, [id], (err, updatedMember) => {
             if (err) {
                 return res.status(500).json({ error: 'Database error' });
             }
-            if (this.changes === 0) {
-                return res.status(404).json({ error: 'Member not found' });
-            }
-            res.json({ id, ...memberData });
+            res.json(updatedMember);
         });
+    });
+});
+
+app.delete('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
+    const { id } = req.params;
+    
+    db.run(`
+        UPDATE members SET status = 'inactive', updated_at = datetime('now') WHERE id = ?
+    `, [id], function(err) {
+        if (err) {
+            console.error('Error deleting member:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Member not found' });
+        }
+        res.json({ message: 'Member deactivated successfully' });
+    });
 });
 
 // ATTENDANCE ROUTES
@@ -292,7 +379,7 @@ app.post('/api/attendance', authenticateToken, requireRole(['admin', 'instructor
 
 // GRADES ROUTES
 app.get('/api/grades', authenticateToken, (req, res) => {
-    db.all('SELECT * FROM grades ORDER BY level', (err, rows) => {
+    db.all('SELECT * FROM grades ORDER BY order_rank', (err, rows) => {
         if (err) {
             return res.status(500).json({ error: 'Database error' });
         }
@@ -303,7 +390,7 @@ app.get('/api/grades', authenticateToken, (req, res) => {
 app.get('/api/grades/:id/criteria', authenticateToken, (req, res) => {
     const { id } = req.params;
     
-    db.all('SELECT * FROM grade_criteria WHERE grade_id = ? ORDER BY category, name', [id], (err, rows) => {
+    db.all('SELECT * FROM grade_criteria WHERE grade_id = ? ORDER BY criterion', [id], (err, rows) => {
         if (err) {
             return res.status(500).json({ error: 'Database error' });
         }
@@ -479,13 +566,13 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
     const stats = {};
     
     // Get member counts by status
-    db.all('SELECT membership_status, COUNT(*) as count FROM members GROUP BY membership_status', (err, memberStats) => {
+    db.all('SELECT status, COUNT(*) as count FROM members GROUP BY status', (err, memberStats) => {
         if (err) {
             return res.status(500).json({ error: 'Database error' });
         }
         
         stats.members = memberStats.reduce((acc, stat) => {
-            acc[stat.membership_status] = stat.count;
+            acc[stat.status] = stat.count;
             return acc;
         }, {});
 
@@ -499,7 +586,7 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
             stats.attendance_this_month = attendanceCount.count;
 
             // Get overdue payments
-            db.get(`SELECT COUNT(*) as count FROM payments WHERE status = 'overdue' OR (status = 'pending' AND due_date < CURRENT_DATE)`, (err, overdueCount) => {
+            db.get(`SELECT COUNT(*) as count FROM payments WHERE status = 'pending' AND due_date < CURRENT_DATE`, (err, overdueCount) => {
                 if (err) {
                     return res.status(500).json({ error: 'Database error' });
                 }
@@ -507,7 +594,7 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
                 stats.overdue_payments = overdueCount.count;
 
                 // Get revenue this month
-                db.get(`SELECT SUM(amount) as total FROM payments WHERE status = 'paid' AND payment_date LIKE ?`, [`${thisMonth}%`], (err, revenue) => {
+                db.get(`SELECT SUM(amount) as total FROM payments WHERE status = 'completed' AND paid_date LIKE ?`, [`${thisMonth}%`], (err, revenue) => {
                     if (err) {
                         return res.status(500).json({ error: 'Database error' });
                     }

@@ -212,15 +212,16 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
             guardian_email, guardian_relationship, emergency_contact_name,
             emergency_contact_phone, emergency_contact_relationship,
             medical_conditions, special_needs, photo_permission,
-            social_media_permission, notes, current_grade_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            social_media_permission, notes, current_grade_id, main_dojo_id, status, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `, [
         first_name, last_name, other_names, date_of_birth, gender,
         address, phone_number, email, guardian_name, guardian_phone,
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,
         medical_conditions, special_needs, photo_permission ? 1 : 0,
-        social_media_permission ? 1 : 0, notes, current_grade_id
+        social_media_permission ? 1 : 0, notes, current_grade_id, 
+        req.body.main_dojo_id, req.body.status || 'active'
     ], function(err) {
         if (err) {
             console.error('Error creating member:', err);
@@ -265,7 +266,7 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
             guardian_email = ?, guardian_relationship = ?, emergency_contact_name = ?,
             emergency_contact_phone = ?, emergency_contact_relationship = ?,
             medical_conditions = ?, special_needs = ?, photo_permission = ?,
-            social_media_permission = ?, notes = ?, current_grade_id = ?, status = ?,
+            social_media_permission = ?, notes = ?, current_grade_id = ?, main_dojo_id = ?, status = ?,
             updated_at = datetime('now')
         WHERE id = ?
     `, [
@@ -274,8 +275,8 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,
         medical_conditions, special_needs, photo_permission ? 1 : 0,
-        social_media_permission ? 1 : 0, notes, current_grade_id, status || 'active',
-        id
+        social_media_permission ? 1 : 0, notes, current_grade_id, 
+        req.body.main_dojo_id, status || 'active', id
     ], function(err) {
         if (err) {
             console.error('Error updating member:', err);
@@ -374,6 +375,41 @@ app.post('/api/attendance', authenticateToken, requireRole(['admin', 'instructor
                 return res.status(500).json({ error: 'Database error' });
             }
             res.status(201).json({ id: this.lastID, member_id, class_id, date, check_in_time, check_out_time, hours_attended, notes });
+        });
+});
+
+// DOJOS ROUTES
+app.get('/api/dojos', authenticateToken, (req, res) => {
+    db.all('SELECT * FROM dojos ORDER BY name', (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        res.json(rows);
+    });
+});
+
+app.post('/api/dojos', authenticateToken, requireRole(['admin']), [
+    body('name').notEmpty().trim(),
+    body('address').optional().trim(),
+    body('phone').optional().trim(),
+    body('email').optional().isEmail().normalizeEmail()
+], handleValidationErrors, (req, res) => {
+    const { name, address, phone, email, primary_instructor_id } = req.body;
+
+    db.run(`INSERT INTO dojos (name, address, phone, email, primary_instructor_id, created_at) 
+            VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        [name, address, phone, email, primary_instructor_id], function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.status(201).json({ 
+                id: this.lastID, 
+                name, 
+                address, 
+                phone, 
+                email, 
+                primary_instructor_id 
+            });
         });
 });
 

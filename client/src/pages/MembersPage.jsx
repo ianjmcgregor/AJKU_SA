@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import MemberModal from '../components/MemberModal';
 
 const MembersPage = () => {
   const [members, setMembers] = useState([]);
@@ -356,35 +357,6 @@ const MembersPage = () => {
   );
 };
 
-// Member Modal Component (you'll need to create this)
-const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
-  // Implementation for the add/edit member modal
-  // This would be a comprehensive form with all the fields
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-        <div className="mt-3">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            {member ? 'Edit Member' : 'Add New Member'}
-          </h3>
-          {/* Form implementation goes here */}
-          <div className="flex justify-end space-x-3 mt-6">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-            >
-              Cancel
-            </button>
-            <button
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              {member ? 'Update' : 'Create'} Member
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+
 
 export default MembersPage;

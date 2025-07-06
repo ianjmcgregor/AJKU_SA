@@ -46,6 +46,7 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showGuardianSection, setShowGuardianSection] = useState(false);
+  const [dateCalculationTimeout, setDateCalculationTimeout] = useState(null);
 
   // Initialize form data when member prop changes
   useEffect(() => {
@@ -78,21 +79,61 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
     }
   }, [member]);
 
-  // Calculate age and determine if guardian is needed
+  // Calculate age and determine if guardian is needed (with debounce)
   useEffect(() => {
-    if (formData.date_of_birth) {
-      const birthDate = new Date(formData.date_of_birth);
-      const today = new Date();
-      const age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-      
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
-      
-      setShowGuardianSection(age < 18);
+    // Clear existing timeout
+    if (dateCalculationTimeout) {
+      clearTimeout(dateCalculationTimeout);
     }
+
+    // Set a new timeout to debounce the calculation
+    const timeout = setTimeout(() => {
+      if (formData.date_of_birth) {
+        try {
+          const birthDate = new Date(formData.date_of_birth);
+          const today = new Date();
+          
+          // Check if the date is valid
+          if (isNaN(birthDate.getTime())) {
+            setShowGuardianSection(false);
+            return;
+          }
+          
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          
+          setShowGuardianSection(age < 18);
+        } catch (error) {
+          console.error('Error calculating age:', error);
+          setShowGuardianSection(false);
+        }
+      } else {
+        setShowGuardianSection(false);
+      }
+    }, 300); // 300ms debounce
+
+    setDateCalculationTimeout(timeout);
+
+    // Cleanup function
+    return () => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
   }, [formData.date_of_birth]);
+
+  // Cleanup timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (dateCalculationTimeout) {
+        clearTimeout(dateCalculationTimeout);
+      }
+    };
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -149,32 +190,45 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
-      return;
-    }
-
-    setLoading(true);
-    
     try {
+      if (!validateForm()) {
+        toast.error('Please fix the errors in the form');
+        return;
+      }
+
+      setLoading(true);
+      
+      // Validate date before submission
+      if (formData.date_of_birth) {
+        const testDate = new Date(formData.date_of_birth);
+        if (isNaN(testDate.getTime())) {
+          toast.error('Please enter a valid date of birth');
+          setLoading(false);
+          return;
+        }
+      }
+      
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
+      
+      // Clean the form data before sending
+      const cleanFormData = { ...formData };
       
       let response;
       if (member) {
         // Update existing member
-        response = await axios.put(`/api/members/${member.id}`, formData, { headers });
+        response = await axios.put(`/api/members/${member.id}`, cleanFormData, { headers });
         toast.success('Member updated successfully');
       } else {
         // Create new member
-        response = await axios.post('/api/members', formData, { headers });
+        response = await axios.post('/api/members', cleanFormData, { headers });
         toast.success('Member created successfully');
       }
       
       onSave(response.data);
       onClose();
     } catch (error) {
-      const errorMessage = error.response?.data?.error || 'Failed to save member';
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to save member';
       toast.error(errorMessage);
       console.error('Error saving member:', error);
     } finally {

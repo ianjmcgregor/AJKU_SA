@@ -87,14 +87,28 @@ const MembersPage = () => {
 
   const calculateAge = (dateOfBirth) => {
     if (!dateOfBirth) return 'N/A';
-    const today = new Date();
-    const birthDate = new Date(dateOfBirth);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
+    
+    try {
+      const birthDate = new Date(dateOfBirth);
+      const today = new Date();
+      
+      // Check if the date is valid
+      if (isNaN(birthDate.getTime())) {
+        return 'Invalid Date';
+      }
+      
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      return age;
+    } catch (error) {
+      console.error('Error calculating age:', error);
+      return 'N/A';
     }
-    return age;
   };
 
   const handleAddMember = () => {

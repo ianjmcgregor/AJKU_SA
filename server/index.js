@@ -193,7 +193,21 @@ app.get('/api/members/:id', authenticateToken, (req, res) => {
 app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor']), [
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
-    body('date_of_birth').isISO8601().toDate(),
+    body('date_of_birth')
+        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .custom((value) => {
+            const date = new Date(value);
+            const today = new Date();
+            if (date > today) {
+                throw new Error('Date of birth cannot be in the future');
+            }
+            const age = today.getFullYear() - date.getFullYear();
+            if (age > 120) {
+                throw new Error('Please check the date of birth');
+            }
+            return true;
+        })
+        .toDate(),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const {
@@ -246,7 +260,21 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
 app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), [
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
-    body('date_of_birth').isISO8601().toDate(),
+    body('date_of_birth')
+        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .custom((value) => {
+            const date = new Date(value);
+            const today = new Date();
+            if (date > today) {
+                throw new Error('Date of birth cannot be in the future');
+            }
+            const age = today.getFullYear() - date.getFullYear();
+            if (age > 120) {
+                throw new Error('Please check the date of birth');
+            }
+            return true;
+        })
+        .toDate(),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const { id } = req.params;

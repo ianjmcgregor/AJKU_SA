@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { calculateAge, validateDateOfBirth, getTodayString } from '../utils/dateUtils';
 
 const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -90,23 +91,8 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
     const timeout = setTimeout(() => {
       if (formData.date_of_birth) {
         try {
-          const birthDate = new Date(formData.date_of_birth);
-          const today = new Date();
-          
-          // Check if the date is valid
-          if (isNaN(birthDate.getTime())) {
-            setShowGuardianSection(false);
-            return;
-          }
-          
-          let age = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          
-          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-          }
-          
-          setShowGuardianSection(age < 18);
+          const age = calculateAge(formData.date_of_birth);
+          setShowGuardianSection(typeof age === 'number' && age < 18);
         } catch (error) {
           console.error('Error calculating age:', error);
           setShowGuardianSection(false);
@@ -158,6 +144,12 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
     if (!formData.first_name.trim()) newErrors.first_name = 'First name is required';
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required';
     if (!formData.date_of_birth) newErrors.date_of_birth = 'Date of birth is required';
+    if (formData.date_of_birth) {
+      const validation = validateDateOfBirth(formData.date_of_birth);
+      if (!validation.isValid) {
+        newErrors.date_of_birth = validation.error;
+      }
+    }
     if (!formData.gender) newErrors.gender = 'Gender is required';
     if (!formData.main_dojo_id) newErrors.main_dojo_id = 'Main dojo is required';
 
@@ -313,16 +305,29 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Date of Birth <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  name="date_of_birth"
-                  value={formData.date_of_birth}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.date_of_birth ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                />
+                <div className="relative">
+                  <input
+                    type="date"
+                    name="date_of_birth"
+                    value={formData.date_of_birth}
+                    onChange={handleInputChange}
+                    max={getTodayString()} // Prevent future dates
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.date_of_birth ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="YYYY-MM-DD"
+                  />
+                  <CalendarDaysIcon className="absolute right-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
+                </div>
                 {errors.date_of_birth && <p className="text-red-500 text-sm mt-1">{errors.date_of_birth}</p>}
+                {formData.date_of_birth && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Age: {(() => {
+                      const age = calculateAge(formData.date_of_birth);
+                      return typeof age === 'number' ? `${age} years old` : age;
+                    })()}
+                  </p>
+                )}
               </div>
 
               <div>

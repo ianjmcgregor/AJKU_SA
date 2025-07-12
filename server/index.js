@@ -82,7 +82,7 @@ app.post('/api/auth/login', [
             return res.status(500).json({ error: 'Database error' });
         }
 
-        if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+        if (!user || !bcrypt.compareSync(password, user.password)) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -112,7 +112,7 @@ app.post('/api/auth/register', [
     const { username, email, password, role = 'member' } = req.body;
     const password_hash = bcrypt.hashSync(password, 10);
 
-    db.run('INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
+    db.run('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
         [username, email, password_hash, role], function(err) {
             if (err) {
                 if (err.code === 'SQLITE_CONSTRAINT') {

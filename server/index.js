@@ -97,7 +97,6 @@ app.post('/api/auth/login', [
             user: {
                 id: user.id,
                 email: user.email,
-                username: user.username,
                 role: user.role
             }
         });
@@ -105,15 +104,14 @@ app.post('/api/auth/login', [
 });
 
 app.post('/api/auth/register', [
-    body('username').isLength({ min: 3 }),
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 6 })
 ], handleValidationErrors, (req, res) => {
-    const { username, email, password, role = 'member' } = req.body;
+    const { email, password, role = 'member' } = req.body;
     const password_hash = bcrypt.hashSync(password, 10);
 
-    db.run('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
-        [username, email, password_hash, role], function(err) {
+    db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
+        [email, password_hash, role], function(err) {
             if (err) {
                 if (err.code === 'SQLITE_CONSTRAINT') {
                     return res.status(400).json({ error: 'Username or email already exists' });
@@ -132,7 +130,6 @@ app.post('/api/auth/register', [
                 user: {
                     id: this.lastID,
                     email,
-                    username,
                     role
                 }
             });

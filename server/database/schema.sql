@@ -107,32 +107,73 @@ CREATE TABLE IF NOT EXISTS member_progress (
     FOREIGN KEY (instructor_id) REFERENCES users (id)
 );
 
--- Classes table
+-- Classes table with enhanced fields for attendance tracking
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
     instructor_id INTEGER NOT NULL,
+    dojo_id INTEGER,
     day_of_week TEXT NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
+    duration_hours REAL DEFAULT 1.0,
+    class_type TEXT DEFAULT 'regular' CHECK (class_type IN ('regular', 'junior', 'senior', 'advanced', 'special')),
     max_participants INTEGER,
+    active BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (instructor_id) REFERENCES users (id)
+    FOREIGN KEY (instructor_id) REFERENCES users (id),
+    FOREIGN KEY (dojo_id) REFERENCES dojos (id)
 );
 
--- Attendance table
+-- Enhanced Attendance table with comprehensive tracking
 CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     member_id INTEGER NOT NULL,
     class_id INTEGER NOT NULL,
     date DATE NOT NULL,
-    present BOOLEAN DEFAULT 1,
+    check_in_time DATETIME,
+    check_out_time DATETIME,
     hours_attended REAL DEFAULT 1.0,
+    status TEXT DEFAULT 'present' CHECK (status IN ('present', 'absent', 'late', 'left_early', 'excused')),
+    attendance_type TEXT DEFAULT 'regular' CHECK (attendance_type IN ('regular', 'backdated', 'manual_adjustment', 'live_update')),
+    adjusted_by INTEGER,
+    adjustment_reason TEXT,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES members (id),
-    FOREIGN KEY (class_id) REFERENCES classes (id)
+    FOREIGN KEY (class_id) REFERENCES classes (id),
+    FOREIGN KEY (adjusted_by) REFERENCES users (id),
+    UNIQUE(member_id, class_id, date)
+);
+
+-- Attendance sessions for live tracking
+CREATE TABLE IF NOT EXISTS attendance_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    instructor_id INTEGER NOT NULL,
+    start_time DATETIME,
+    end_time DATETIME,
+    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'ended')),
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (class_id) REFERENCES classes (id),
+    FOREIGN KEY (instructor_id) REFERENCES users (id)
+);
+
+-- Live attendance tracking
+CREATE TABLE IF NOT EXISTS live_attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    check_in_time DATETIME,
+    check_out_time DATETIME,
+    status TEXT DEFAULT 'present' CHECK (status IN ('present', 'absent', 'late', 'left_early')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES attendance_sessions (id),
+    FOREIGN KEY (member_id) REFERENCES members (id)
 );
 
 -- Payments table
@@ -168,6 +209,14 @@ CREATE INDEX IF NOT EXISTS idx_members_grade ON members (current_grade_id);
 CREATE INDEX IF NOT EXISTS idx_members_dojo ON members (main_dojo_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance (date);
 CREATE INDEX IF NOT EXISTS idx_attendance_member ON attendance (member_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_class ON attendance (class_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_status ON attendance (status);
+CREATE INDEX IF NOT EXISTS idx_attendance_type ON attendance (attendance_type);
+CREATE INDEX IF NOT EXISTS idx_attendance_member_class_date ON attendance (member_id, class_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_sessions_class_date ON attendance_sessions (class_id, date);
+CREATE INDEX IF NOT EXISTS idx_live_attendance_session ON live_attendance (session_id);
+CREATE INDEX IF NOT EXISTS idx_live_attendance_member ON live_attendance (member_id);
 CREATE INDEX IF NOT EXISTS idx_payments_member ON payments (member_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
 CREATE INDEX IF NOT EXISTS idx_dojos_active ON dojos (active);
+CREATE INDEX IF NOT EXISTS idx_classes_active ON classes (active);

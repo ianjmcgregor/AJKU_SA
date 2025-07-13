@@ -219,30 +219,46 @@ function insertSampleData() {
         ]);
     });
     
-    // Create sample classes
-    db.run(`INSERT INTO classes (name, description, instructor_id, day_of_week, start_time, end_time, max_participants) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ['Beginner Karate', 'Basic karate for beginners', 2, 'Monday', '18:00', '19:00', 20]);
+    // Create sample classes with enhanced fields
+    db.run(`INSERT INTO classes (name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants, active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['Beginner Karate', 'Basic karate for beginners', 2, 1, 'Monday', '18:00', '19:00', 1.0, 'regular', 20, 1]);
     
-    db.run(`INSERT INTO classes (name, description, instructor_id, day_of_week, start_time, end_time, max_participants) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ['Advanced Karate', 'Advanced techniques and sparring', 2, 'Wednesday', '19:00', '20:30', 15]);
+    db.run(`INSERT INTO classes (name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants, active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['Advanced Karate', 'Advanced techniques and sparring', 2, 1, 'Wednesday', '19:00', '20:30', 1.5, 'senior', 15, 1]);
     
-    db.run(`INSERT INTO classes (name, description, instructor_id, day_of_week, start_time, end_time, max_participants) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ['Kids Karate', 'Karate for children under 12', 2, 'Saturday', '10:00', '11:00', 12]);
+    db.run(`INSERT INTO classes (name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants, active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['Kids Karate', 'Karate for children under 12', 2, 1, 'Saturday', '10:00', '10:45', 0.75, 'junior', 12, 1]);
     
-    // Create sample attendance records
+    db.run(`INSERT INTO classes (name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants, active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['Millicent Beginners', 'Basic karate for Millicent beginners', 2, 2, 'Tuesday', '17:30', '18:30', 1.0, 'regular', 15, 1]);
+    
+    // Create sample attendance records with enhanced tracking
     const today = new Date();
     const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
     
-    db.run(`INSERT INTO attendance (member_id, class_id, date, present, hours_attended, notes) 
-            VALUES (?, ?, ?, ?, ?, ?)`,
-        [1, 1, lastWeek.toISOString().split('T')[0], 1, 1.0, 'Good participation']);
+    // Regular attendance records
+    db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, hours_attended, status, attendance_type, notes) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [1, 1, lastWeek.toISOString().split('T')[0], lastWeek.toISOString(), 1.0, 'present', 'regular', 'Good participation']);
     
-    db.run(`INSERT INTO attendance (member_id, class_id, date, present, hours_attended, notes) 
-            VALUES (?, ?, ?, ?, ?, ?)`,
-        [2, 3, lastWeek.toISOString().split('T')[0], 1, 1.0, 'Excellent technique']);
+    db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, hours_attended, status, attendance_type, notes) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [2, 3, lastWeek.toISOString().split('T')[0], lastWeek.toISOString(), 0.75, 'present', 'regular', 'Excellent technique']);
+    
+    // Backdated attendance records
+    db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, check_out_time, hours_attended, status, attendance_type, adjusted_by, adjustment_reason, notes) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [3, 2, twoWeeksAgo.toISOString().split('T')[0], twoWeeksAgo.toISOString(), new Date(twoWeeksAgo.getTime() + 1.5 * 60 * 60 * 1000).toISOString(), 1.5, 'present', 'backdated', 2, 'Forgot to record attendance', 'Late entry']);
+    
+    // Manual adjustment record
+    db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, hours_attended, status, attendance_type, adjusted_by, adjustment_reason, notes) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [4, 1, lastWeek.toISOString().split('T')[0], lastWeek.toISOString(), 1.0, 'late', 'manual_adjustment', 2, 'Student arrived 15 minutes late', 'Corrected status']);
     
     // Create sample payments
     db.run(`INSERT INTO payments (member_id, amount, payment_type, payment_method, status, due_date, paid_date, description) 

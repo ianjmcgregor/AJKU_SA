@@ -12,8 +12,10 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import MemberModal from '../components/MemberModal';
 import { calculateAge } from '../utils/dateUtils';
+import { useAuth } from '../contexts/AuthContext';
 
 const MembersPage = () => {
+  const { isAdmin } = useAuth();
   const [members, setMembers] = useState([]);
   const [dojos, setDojos] = useState([]);
   const [grades, setGrades] = useState([]);
@@ -121,16 +123,17 @@ const MembersPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`/api/members/${memberId}`, {
+      const response = await axios.delete(`/api/members/${memberId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       setMembers(members.map(m => 
         m.id === memberId ? { ...m, status: 'inactive' } : m
       ));
-      toast.success('Member deactivated successfully');
+      toast.success(response.data.message || 'Member deactivated successfully');
     } catch (error) {
-      toast.error('Failed to deactivate member');
+      const errorMessage = error.response?.data?.error || 'Failed to deactivate member';
+      toast.error(errorMessage);
       console.error(error);
     }
   };
@@ -142,16 +145,52 @@ const MembersPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.patch(`/api/members/${memberId}/reactivate`, {}, {
+      const response = await axios.patch(`/api/members/${memberId}/reactivate`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       setMembers(members.map(m => 
         m.id === memberId ? { ...m, status: 'active' } : m
       ));
-      toast.success('Member reactivated successfully');
+      toast.success(response.data.message || 'Member reactivated successfully');
     } catch (error) {
-      toast.error('Failed to reactivate member');
+      const errorMessage = error.response?.data?.error || 'Failed to reactivate member';
+      toast.error(errorMessage);
+      console.error(error);
+    }
+  };
+
+  const handlePermanentDeleteMember = async (memberId, memberName) => {
+    const warningMessage = `⚠️ WARNING: This action cannot be undone!\n\nYou are about to PERMANENTLY DELETE ${memberName} and all their associated data including:\n• Attendance records\n• Payment history\n• Grade history\n• Progress tracking\n\nThis action is irreversible. Are you absolutely sure you want to proceed?`;
+    
+    if (!window.confirm(warningMessage)) {
+      return;
+    }
+
+    // Double confirmation for permanent deletion
+    if (!window.confirm(`Final confirmation: Are you absolutely certain you want to permanently delete ${memberName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.delete(`/api/members/${memberId}/permanent`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Remove the member from the local state
+      setMembers(members.filter(m => m.id !== memberId));
+      
+      const deletedMember = response.data.deletedMember;
+      const relatedRecords = deletedMember.relatedRecords;
+      
+      toast.success(
+        `Member permanently deleted. Removed ${relatedRecords.attendance} attendance records, ${relatedRecords.payments} payments, ${relatedRecords.grades} grades, and ${relatedRecords.progress} progress records.`,
+        { duration: 6000 }
+      );
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || 'Failed to permanently delete member';
+      toast.error(errorMessage);
       console.error(error);
     }
   };
@@ -367,6 +406,16 @@ const MembersPage = () => {
                           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                           </svg>
+                        </button>
+                      )}
+                      {/* Permanent delete option for admins only */}
+                      {isAdmin() && (
+                        <button
+                          onClick={() => handlePermanentDeleteMember(member.id, `${member.first_name} ${member.last_name}`)}
+                          className="text-red-800 hover:text-red-900 p-1 border border-red-300 rounded"
+                          title="Permanently delete member (Admin only)"
+                        >
+                          <ExclamationTriangleIcon className="h-5 w-5" />
                         </button>
                       )}
                     </div>

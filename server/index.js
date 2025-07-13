@@ -341,34 +341,144 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
 app.delete('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
     const { id } = req.params;
     
-    db.run(`
-        UPDATE members SET status = 'inactive', updated_at = datetime('now') WHERE id = ?
-    `, [id], function(err) {
+    // First check if member exists
+    db.get('SELECT id, first_name, last_name, status FROM members WHERE id = ?', [id], (err, member) => {
         if (err) {
-            console.error('Error deleting member:', err);
+            console.error('Error checking member:', err);
             return res.status(500).json({ error: 'Database error' });
         }
-        if (this.changes === 0) {
+        if (!member) {
             return res.status(404).json({ error: 'Member not found' });
         }
-        res.json({ message: 'Member deactivated successfully' });
+        if (member.status === 'inactive') {
+            return res.status(400).json({ error: 'Member is already inactive' });
+        }
+        
+        // Proceed with deactivation
+        db.run(`
+            UPDATE members SET status = 'inactive', updated_at = datetime('now') WHERE id = ?
+        `, [id], function(err) {
+            if (err) {
+                console.error('Error deactivating member:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.json({ 
+                message: 'Member deactivated successfully',
+                member: {
+                    id: member.id,
+                    name: `${member.first_name} ${member.last_name}`,
+                    status: 'inactive'
+                }
+            });
+        });
+    });
+});
+
+// Permanent delete endpoint - requires admin role only
+app.delete('/api/members/:id/permanent', authenticateToken, requireRole(['admin']), (req, res) => {
+    const { id } = req.params;
+    
+    // First check if member exists and get related data count
+    db.get(`
+        SELECT m.id, m.first_name, m.last_name, m.status,
+               (SELECT COUNT(*) FROM attendance WHERE member_id = m.id) as attendance_count,
+               (SELECT COUNT(*) FROM payments WHERE member_id = m.id) as payments_count,
+               (SELECT COUNT(*) FROM member_grades WHERE member_id = m.id) as grades_count,
+               (SELECT COUNT(*) FROM member_progress WHERE member_id = m.id) as progress_count
+        FROM members m WHERE m.id = ?
+    `, [id], (err, member) => {
+        if (err) {
+            console.error('Error checking member:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (!member) {
+            return res.status(404).json({ error: 'Member not found' });
+        }
+        
+        // Start a transaction for permanent deletion
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            
+            // Delete related records first (in reverse order of dependencies)
+            const deleteQueries = [
+                'DELETE FROM member_progress WHERE member_id = ?',
+                'DELETE FROM member_grades WHERE member_id = ?',
+                'DELETE FROM attendance WHERE member_id = ?',
+                'DELETE FROM payments WHERE member_id = ?',
+                'DELETE FROM members WHERE id = ?'
+            ];
+            
+            let completedQueries = 0;
+            let hasError = false;
+            
+            deleteQueries.forEach((query, index) => {
+                db.run(query, [id], function(err) {
+                    if (err) {
+                        console.error(`Error in delete query ${index + 1}:`, err);
+                        hasError = true;
+                    }
+                    completedQueries++;
+                    
+                    if (completedQueries === deleteQueries.length) {
+                        if (hasError) {
+                            db.run('ROLLBACK');
+                            return res.status(500).json({ error: 'Failed to permanently delete member and related data' });
+                        }
+                        
+                        db.run('COMMIT');
+                        res.json({ 
+                            message: 'Member permanently deleted successfully',
+                            deletedMember: {
+                                id: member.id,
+                                name: `${member.first_name} ${member.last_name}`,
+                                relatedRecords: {
+                                    attendance: member.attendance_count,
+                                    payments: member.payments_count,
+                                    grades: member.grades_count,
+                                    progress: member.progress_count
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        });
     });
 });
 
 app.patch('/api/members/:id/reactivate', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
     const { id } = req.params;
     
-    db.run(`
-        UPDATE members SET status = 'active', updated_at = datetime('now') WHERE id = ?
-    `, [id], function(err) {
+    // First check if member exists
+    db.get('SELECT id, first_name, last_name, status FROM members WHERE id = ?', [id], (err, member) => {
         if (err) {
-            console.error('Error reactivating member:', err);
+            console.error('Error checking member:', err);
             return res.status(500).json({ error: 'Database error' });
         }
-        if (this.changes === 0) {
+        if (!member) {
             return res.status(404).json({ error: 'Member not found' });
         }
-        res.json({ message: 'Member reactivated successfully' });
+        if (member.status === 'active') {
+            return res.status(400).json({ error: 'Member is already active' });
+        }
+        
+        // Proceed with reactivation
+        db.run(`
+            UPDATE members SET status = 'active', updated_at = datetime('now') WHERE id = ?
+        `, [id], function(err) {
+            if (err) {
+                console.error('Error reactivating member:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.json({ 
+                message: 'Member reactivated successfully',
+                member: {
+                    id: member.id,
+                    name: `${member.first_name} ${member.last_name}`,
+                    status: 'active'
+                }
+            });
+        });
     });
 });
 

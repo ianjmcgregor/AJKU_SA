@@ -82,7 +82,7 @@ app.post('/api/auth/login', [
             return res.status(500).json({ error: 'Database error' });
         }
 
-        if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+        if (!user || !bcrypt.compareSync(password, user.password)) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -97,7 +97,6 @@ app.post('/api/auth/login', [
             user: {
                 id: user.id,
                 email: user.email,
-                username: user.username,
                 role: user.role
             }
         });
@@ -105,15 +104,14 @@ app.post('/api/auth/login', [
 });
 
 app.post('/api/auth/register', [
-    body('username').isLength({ min: 3 }),
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 6 })
 ], handleValidationErrors, (req, res) => {
-    const { username, email, password, role = 'member' } = req.body;
+    const { email, password, role = 'member' } = req.body;
     const password_hash = bcrypt.hashSync(password, 10);
 
-    db.run('INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
-        [username, email, password_hash, role], function(err) {
+    db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
+        [email, password_hash, role], function(err) {
             if (err) {
                 if (err.code === 'SQLITE_CONSTRAINT') {
                     return res.status(400).json({ error: 'Username or email already exists' });
@@ -132,7 +130,6 @@ app.post('/api/auth/register', [
                 user: {
                     id: this.lastID,
                     email,
-                    username,
                     role
                 }
             });
@@ -193,7 +190,21 @@ app.get('/api/members/:id', authenticateToken, (req, res) => {
 app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor']), [
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
-    body('date_of_birth').isISO8601().toDate(),
+    body('date_of_birth')
+        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .custom((value) => {
+            const date = new Date(value);
+            const today = new Date();
+            if (date > today) {
+                throw new Error('Date of birth cannot be in the future');
+            }
+            const age = today.getFullYear() - date.getFullYear();
+            if (age > 120) {
+                throw new Error('Please check the date of birth');
+            }
+            return true;
+        })
+        .toDate(),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const {
@@ -246,7 +257,21 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
 app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor']), [
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
-    body('date_of_birth').isISO8601().toDate(),
+    body('date_of_birth')
+        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .custom((value) => {
+            const date = new Date(value);
+            const today = new Date();
+            if (date > today) {
+                throw new Error('Date of birth cannot be in the future');
+            }
+            const age = today.getFullYear() - date.getFullYear();
+            if (age > 120) {
+                throw new Error('Please check the date of birth');
+            }
+            return true;
+        })
+        .toDate(),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const { id } = req.params;

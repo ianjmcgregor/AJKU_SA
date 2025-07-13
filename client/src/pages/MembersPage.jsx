@@ -11,6 +11,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import MemberModal from '../components/MemberModal';
+import { calculateAge } from '../utils/dateUtils';
 
 const MembersPage = () => {
   const [members, setMembers] = useState([]);
@@ -85,31 +86,7 @@ const MembersPage = () => {
     return `px-2 py-1 text-xs font-medium rounded border ${colorClasses[gradeColor] || colorClasses.white}`;
   };
 
-  const calculateAge = (dateOfBirth) => {
-    if (!dateOfBirth) return 'N/A';
-    
-    try {
-      const birthDate = new Date(dateOfBirth);
-      const today = new Date();
-      
-      // Check if the date is valid
-      if (isNaN(birthDate.getTime())) {
-        return 'Invalid Date';
-      }
-      
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-      
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
-      
-      return age;
-    } catch (error) {
-      console.error('Error calculating age:', error);
-      return 'N/A';
-    }
-  };
+
 
   const handleAddMember = () => {
     setEditingMember(null);

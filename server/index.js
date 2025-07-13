@@ -65,7 +65,11 @@ const requireRole = (roles) => {
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        console.log('Validation errors:', errors.array());
+        return res.status(400).json({ 
+            error: 'Validation failed',
+            details: errors.array() 
+        });
     }
     next();
 };
@@ -191,20 +195,23 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
     body('date_of_birth')
-        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .notEmpty().withMessage('Date of birth is required')
         .custom((value) => {
+            if (!value) return false; // Require date of birth for new members
             const date = new Date(value);
+            if (isNaN(date.getTime())) {
+                throw new Error('Date of birth must be a valid date');
+            }
             const today = new Date();
             if (date > today) {
                 throw new Error('Date of birth cannot be in the future');
             }
             const age = today.getFullYear() - date.getFullYear();
             if (age > 120) {
-                throw new Error('Please check the date of birth');
+                throw new Error('Please check the date of birth (age over 120)');
             }
             return true;
-        })
-        .toDate(),
+        }),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const {
@@ -258,20 +265,23 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
     body('first_name').notEmpty().trim(),
     body('last_name').notEmpty().trim(),
     body('date_of_birth')
-        .isISO8601().withMessage('Date of birth must be a valid date in YYYY-MM-DD format')
+        .optional()
         .custom((value) => {
+            if (!value) return true; // Allow empty/null values
             const date = new Date(value);
+            if (isNaN(date.getTime())) {
+                throw new Error('Date of birth must be a valid date');
+            }
             const today = new Date();
             if (date > today) {
                 throw new Error('Date of birth cannot be in the future');
             }
             const age = today.getFullYear() - date.getFullYear();
             if (age > 120) {
-                throw new Error('Please check the date of birth');
+                throw new Error('Please check the date of birth (age over 120)');
             }
             return true;
-        })
-        .toDate(),
+        }),
     body('email').optional().isEmail().normalizeEmail()
 ], handleValidationErrors, (req, res) => {
     const { id } = req.params;

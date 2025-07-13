@@ -374,12 +374,14 @@ app.patch('/api/members/:id/reactivate', authenticateToken, requireRole(['admin'
 
 // ATTENDANCE ROUTES
 app.get('/api/attendance', authenticateToken, (req, res) => {
-    const { member_id, class_id, date_from, date_to, limit = 100, offset = 0 } = req.query;
+    const { member_id, class_id, date_from, date_to, status, attendance_type, limit = 100, offset = 0 } = req.query;
     let query = `
-        SELECT a.*, m.first_name, m.last_name, c.name as class_name
+        SELECT a.*, m.first_name, m.last_name, c.name as class_name, c.duration_hours,
+               u.email as adjusted_by_email
         FROM attendance a
         JOIN members m ON a.member_id = m.id
         JOIN classes c ON a.class_id = c.id
+        LEFT JOIN users u ON a.adjusted_by = u.id
         WHERE 1=1
     `;
     const params = [];
@@ -404,6 +406,16 @@ app.get('/api/attendance', authenticateToken, (req, res) => {
         params.push(date_to);
     }
 
+    if (status) {
+        query += ' AND a.status = ?';
+        params.push(status);
+    }
+
+    if (attendance_type) {
+        query += ' AND a.attendance_type = ?';
+        params.push(attendance_type);
+    }
+
     query += ' ORDER BY a.date DESC, a.check_in_time DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
@@ -415,21 +427,360 @@ app.get('/api/attendance', authenticateToken, (req, res) => {
     });
 });
 
+// Get attendance for a specific date and class
+app.get('/api/attendance/class/:class_id/date/:date', authenticateToken, (req, res) => {
+    const { class_id, date } = req.params;
+    
+    const query = `
+        SELECT a.*, m.first_name, m.last_name, m.current_grade_id, g.name as grade_name, g.color as grade_color
+        FROM attendance a
+        JOIN members m ON a.member_id = m.id
+        LEFT JOIN grades g ON m.current_grade_id = g.id
+        WHERE a.class_id = ? AND a.date = ?
+        ORDER BY m.last_name, m.first_name
+    `;
+    
+    db.all(query, [class_id, date], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        res.json(rows);
+    });
+});
+
+// Record regular attendance
 app.post('/api/attendance', authenticateToken, requireRole(['admin', 'instructor']), [
     body('member_id').isInt({ gt: 0 }),
     body('class_id').isInt({ gt: 0 }),
-    body('date').isISO8601().toDate()
+    body('date').isISO8601().toDate(),
+    body('status').optional().isIn(['present', 'absent', 'late', 'left_early', 'excused']),
+    body('hours_attended').optional().isFloat({ min: 0, max: 24 })
 ], handleValidationErrors, (req, res) => {
-    const { member_id, class_id, date, check_in_time, check_out_time, hours_attended, notes } = req.body;
+    const { member_id, class_id, date, status = 'present', hours_attended, notes } = req.body;
+    const instructor_id = req.user.id;
 
-    db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, check_out_time, hours_attended, notes) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [member_id, class_id, date, check_in_time, check_out_time, hours_attended, notes], function(err) {
+    // Check if attendance already exists for this member, class, and date
+    db.get('SELECT id FROM attendance WHERE member_id = ? AND class_id = ? AND date = ?', 
+        [member_id, class_id, date], (err, existing) => {
             if (err) {
                 return res.status(500).json({ error: 'Database error' });
             }
-            res.status(201).json({ id: this.lastID, member_id, class_id, date, check_in_time, check_out_time, hours_attended, notes });
+            
+            if (existing) {
+                return res.status(400).json({ error: 'Attendance already recorded for this member on this date' });
+            }
+
+            // Get class duration if hours_attended not provided
+            let finalHours = hours_attended;
+            if (!finalHours) {
+                db.get('SELECT duration_hours FROM classes WHERE id = ?', [class_id], (err, classInfo) => {
+                    if (err) {
+                        return res.status(500).json({ error: 'Database error' });
+                    }
+                    finalHours = classInfo ? classInfo.duration_hours : 1.0;
+                    
+                    insertAttendance();
+                });
+            } else {
+                insertAttendance();
+            }
+
+            function insertAttendance() {
+                const checkInTime = status === 'present' ? new Date().toISOString() : null;
+                
+                db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, hours_attended, status, attendance_type, notes, created_at) 
+                        VALUES (?, ?, ?, ?, ?, ?, 'regular', ?, CURRENT_TIMESTAMP)`,
+                    [member_id, class_id, date, checkInTime, finalHours, status, notes], function(err) {
+                        if (err) {
+                            return res.status(500).json({ error: 'Database error' });
+                        }
+                        res.status(201).json({ 
+                            id: this.lastID, 
+                            member_id, 
+                            class_id, 
+                            date, 
+                            status,
+                            hours_attended: finalHours,
+                            attendance_type: 'regular'
+                        });
+                    });
+            }
         });
+});
+
+// Backdate attendance
+app.post('/api/attendance/backdate', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('member_id').isInt({ gt: 0 }),
+    body('class_id').isInt({ gt: 0 }),
+    body('date').isISO8601().toDate(),
+    body('status').isIn(['present', 'absent', 'late', 'left_early', 'excused']),
+    body('hours_attended').optional().isFloat({ min: 0, max: 24 }),
+    body('check_in_time').optional().isISO8601().toDate(),
+    body('check_out_time').optional().isISO8601().toDate(),
+    body('adjustment_reason').notEmpty().trim()
+], handleValidationErrors, (req, res) => {
+    const { member_id, class_id, date, status, hours_attended, check_in_time, check_out_time, adjustment_reason, notes } = req.body;
+    const adjusted_by = req.user.id;
+
+    // Check if attendance already exists
+    db.get('SELECT id FROM attendance WHERE member_id = ? AND class_id = ? AND date = ?', 
+        [member_id, class_id, date], (err, existing) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            
+            if (existing) {
+                return res.status(400).json({ error: 'Attendance already recorded for this member on this date' });
+            }
+
+            // Get class duration if hours_attended not provided
+            let finalHours = hours_attended;
+            if (!finalHours) {
+                db.get('SELECT duration_hours FROM classes WHERE id = ?', [class_id], (err, classInfo) => {
+                    if (err) {
+                        return res.status(500).json({ error: 'Database error' });
+                    }
+                    finalHours = classInfo ? classInfo.duration_hours : 1.0;
+                    insertBackdatedAttendance();
+                });
+            } else {
+                insertBackdatedAttendance();
+            }
+
+            function insertBackdatedAttendance() {
+                db.run(`INSERT INTO attendance (member_id, class_id, date, check_in_time, check_out_time, hours_attended, status, attendance_type, adjusted_by, adjustment_reason, notes, created_at) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'backdated', ?, ?, ?, CURRENT_TIMESTAMP)`,
+                    [member_id, class_id, date, check_in_time, check_out_time, finalHours, status, adjusted_by, adjustment_reason, notes], function(err) {
+                        if (err) {
+                            return res.status(500).json({ error: 'Database error' });
+                        }
+                        res.status(201).json({ 
+                            id: this.lastID, 
+                            member_id, 
+                            class_id, 
+                            date, 
+                            status,
+                            hours_attended: finalHours,
+                            attendance_type: 'backdated',
+                            adjustment_reason
+                        });
+                    });
+            }
+        });
+});
+
+// Manual adjustment of existing attendance
+app.put('/api/attendance/:id', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('status').optional().isIn(['present', 'absent', 'late', 'left_early', 'excused']),
+    body('hours_attended').optional().isFloat({ min: 0, max: 24 }),
+    body('check_in_time').optional().isISO8601().toDate(),
+    body('check_out_time').optional().isISO8601().toDate(),
+    body('adjustment_reason').notEmpty().trim()
+], handleValidationErrors, (req, res) => {
+    const { id } = req.params;
+    const { status, hours_attended, check_in_time, check_out_time, adjustment_reason, notes } = req.body;
+    const adjusted_by = req.user.id;
+
+    db.run(`UPDATE attendance SET 
+            status = COALESCE(?, status),
+            hours_attended = COALESCE(?, hours_attended),
+            check_in_time = COALESCE(?, check_in_time),
+            check_out_time = COALESCE(?, check_out_time),
+            attendance_type = 'manual_adjustment',
+            adjusted_by = ?,
+            adjustment_reason = ?,
+            notes = COALESCE(?, notes),
+            updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+        [status, hours_attended, check_in_time, check_out_time, adjusted_by, adjustment_reason, notes, id], function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            if (this.changes === 0) {
+                return res.status(404).json({ error: 'Attendance record not found' });
+            }
+            res.json({ 
+                id, 
+                status, 
+                hours_attended, 
+                attendance_type: 'manual_adjustment',
+                adjustment_reason 
+            });
+        });
+});
+
+// Live attendance session management
+app.post('/api/attendance/sessions', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('class_id').isInt({ gt: 0 }),
+    body('date').isISO8601().toDate()
+], handleValidationErrors, (req, res) => {
+    const { class_id, date, notes } = req.body;
+    const instructor_id = req.user.id;
+
+    db.run(`INSERT INTO attendance_sessions (class_id, date, instructor_id, start_time, status, notes) 
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'active', ?)`,
+        [class_id, date, instructor_id, notes], function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.status(201).json({ 
+                id: this.lastID, 
+                class_id, 
+                date, 
+                status: 'active',
+                start_time: new Date().toISOString()
+            });
+        });
+});
+
+// End attendance session
+app.put('/api/attendance/sessions/:id/end', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
+    const { id } = req.params;
+
+    db.run(`UPDATE attendance_sessions SET 
+            end_time = CURRENT_TIMESTAMP, 
+            status = 'ended' 
+            WHERE id = ?`,
+        [id], function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            if (this.changes === 0) {
+                return res.status(404).json({ error: 'Session not found' });
+            }
+            res.json({ id, status: 'ended', end_time: new Date().toISOString() });
+        });
+});
+
+// Live attendance check-in/check-out
+app.post('/api/attendance/live', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('session_id').isInt({ gt: 0 }),
+    body('member_id').isInt({ gt: 0 }),
+    body('action').isIn(['check_in', 'check_out'])
+], handleValidationErrors, (req, res) => {
+    const { session_id, member_id, action } = req.body;
+    const currentTime = new Date().toISOString();
+
+    if (action === 'check_in') {
+        // Check if already checked in
+        db.get('SELECT id FROM live_attendance WHERE session_id = ? AND member_id = ? AND check_out_time IS NULL', 
+            [session_id, member_id], (err, existing) => {
+                if (err) {
+                    return res.status(500).json({ error: 'Database error' });
+                }
+                
+                if (existing) {
+                    return res.status(400).json({ error: 'Member already checked in' });
+                }
+
+                db.run(`INSERT INTO live_attendance (session_id, member_id, check_in_time, status) 
+                        VALUES (?, ?, ?, 'present')`,
+                    [session_id, member_id, currentTime], function(err) {
+                        if (err) {
+                            return res.status(500).json({ error: 'Database error' });
+                        }
+                        res.status(201).json({ 
+                            id: this.lastID, 
+                            session_id, 
+                            member_id, 
+                            action: 'check_in',
+                            check_in_time: currentTime 
+                        });
+                    });
+            });
+    } else {
+        // Check out
+        db.run(`UPDATE live_attendance SET 
+                check_out_time = ?, 
+                status = 'left_early' 
+                WHERE session_id = ? AND member_id = ? AND check_out_time IS NULL`,
+            [currentTime, session_id, member_id], function(err) {
+                if (err) {
+                    return res.status(500).json({ error: 'Database error' });
+                }
+                if (this.changes === 0) {
+                    return res.status(400).json({ error: 'Member not checked in or already checked out' });
+                }
+                res.json({ 
+                    session_id, 
+                    member_id, 
+                    action: 'check_out',
+                    check_out_time: currentTime 
+                });
+            });
+    }
+});
+
+// Get live attendance for a session
+app.get('/api/attendance/sessions/:id/live', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    
+    const query = `
+        SELECT la.*, m.first_name, m.last_name, m.current_grade_id, g.name as grade_name, g.color as grade_color
+        FROM live_attendance la
+        JOIN members m ON la.member_id = m.id
+        LEFT JOIN grades g ON m.current_grade_id = g.id
+        WHERE la.session_id = ?
+        ORDER BY la.check_in_time DESC
+    `;
+    
+    db.all(query, [id], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        res.json(rows);
+    });
+});
+
+// Finalize live attendance to permanent records
+app.post('/api/attendance/sessions/:id/finalize', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
+    const { id } = req.params;
+
+    // Get session details
+    db.get('SELECT * FROM attendance_sessions WHERE id = ?', [id], (err, session) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (!session) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Get all live attendance records for this session
+        db.all('SELECT * FROM live_attendance WHERE session_id = ?', [id], (err, liveRecords) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Insert into permanent attendance table
+            const insertPromises = liveRecords.map(record => {
+                return new Promise((resolve, reject) => {
+                    const hoursAttended = record.check_out_time ? 
+                        (new Date(record.check_out_time) - new Date(record.check_in_time)) / (1000 * 60 * 60) : 
+                        session.duration_hours || 1.0;
+
+                    db.run(`INSERT OR REPLACE INTO attendance 
+                            (member_id, class_id, date, check_in_time, check_out_time, hours_attended, status, attendance_type, notes, created_at) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'live_update', ?, CURRENT_TIMESTAMP)`,
+                        [record.member_id, session.class_id, session.date, record.check_in_time, record.check_out_time, hoursAttended, record.status, 'Live session attendance'],
+                        function(err) {
+                            if (err) reject(err);
+                            else resolve(this.lastID);
+                        });
+                });
+            });
+
+            Promise.all(insertPromises)
+                .then(() => {
+                    res.json({ 
+                        message: 'Attendance finalized successfully', 
+                        records_processed: liveRecords.length 
+                    });
+                })
+                .catch(err => {
+                    res.status(500).json({ error: 'Error finalizing attendance' });
+                });
+        });
+    });
 });
 
 // DOJOS ROUTES
@@ -463,6 +814,93 @@ app.post('/api/dojos', authenticateToken, requireRole(['admin']), [
                 phone, 
                 email, 
                 primary_instructor_id 
+            });
+        });
+});
+
+// CLASSES ROUTES
+app.get('/api/classes', authenticateToken, (req, res) => {
+    const { active, instructor_id, dojo_id } = req.query;
+    let query = `
+        SELECT c.*, u.email as instructor_email, d.name as dojo_name
+        FROM classes c
+        LEFT JOIN users u ON c.instructor_id = u.id
+        LEFT JOIN dojos d ON c.dojo_id = d.id
+        WHERE 1=1
+    `;
+    const params = [];
+
+    if (active !== undefined) {
+        query += ' AND c.active = ?';
+        params.push(active === 'true' ? 1 : 0);
+    }
+
+    if (instructor_id) {
+        query += ' AND c.instructor_id = ?';
+        params.push(instructor_id);
+    }
+
+    if (dojo_id) {
+        query += ' AND c.dojo_id = ?';
+        params.push(dojo_id);
+    }
+
+    query += ' ORDER BY c.day_of_week, c.start_time';
+
+    db.all(query, params, (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        res.json(rows);
+    });
+});
+
+app.get('/api/classes/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    
+    db.get(`
+        SELECT c.*, u.email as instructor_email, d.name as dojo_name
+        FROM classes c
+        LEFT JOIN users u ON c.instructor_id = u.id
+        LEFT JOIN dojos d ON c.dojo_id = d.id
+        WHERE c.id = ?
+    `, [id], (err, classInfo) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (!classInfo) {
+            return res.status(404).json({ error: 'Class not found' });
+        }
+        res.json(classInfo);
+    });
+});
+
+app.post('/api/classes', authenticateToken, requireRole(['admin', 'instructor']), [
+    body('name').notEmpty().trim(),
+    body('instructor_id').isInt({ gt: 0 }),
+    body('day_of_week').isIn(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
+    body('start_time').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/),
+    body('end_time').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/),
+    body('duration_hours').optional().isFloat({ min: 0.25, max: 8 }),
+    body('class_type').optional().isIn(['regular', 'junior', 'senior', 'advanced', 'special'])
+], handleValidationErrors, (req, res) => {
+    const { name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants } = req.body;
+
+    db.run(`INSERT INTO classes (name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours, class_type, max_participants, active, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
+        [name, description, instructor_id, dojo_id, day_of_week, start_time, end_time, duration_hours || 1.0, class_type || 'regular', max_participants], function(err) {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            res.status(201).json({ 
+                id: this.lastID, 
+                name, 
+                instructor_id, 
+                day_of_week, 
+                start_time, 
+                end_time,
+                duration_hours: duration_hours || 1.0,
+                class_type: class_type || 'regular'
             });
         });
 });

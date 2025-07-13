@@ -212,10 +212,11 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
             }
             return true;
         }),
-    body('email').optional().isEmail().normalizeEmail()
+    body('email').optional().isEmail().normalizeEmail(),
+    body('instructor_role').optional().isIn(['main_instructor', 'senior_instructor', 'developing_instructor', 'student'])
 ], handleValidationErrors, (req, res) => {
     const {
-        first_name, last_name, other_names, date_of_birth, gender,
+        first_name, last_name, other_names, date_of_birth, gender, instructor_role,
         address, phone_number, email, guardian_name, guardian_phone,
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,
@@ -225,15 +226,15 @@ app.post('/api/members', authenticateToken, requireRole(['admin', 'instructor'])
 
     db.run(`
         INSERT INTO members (
-            first_name, last_name, other_names, date_of_birth, gender,
+            first_name, last_name, other_names, date_of_birth, gender, instructor_role,
             address, phone_number, email, guardian_name, guardian_phone,
             guardian_email, guardian_relationship, emergency_contact_name,
             emergency_contact_phone, emergency_contact_relationship,
             medical_conditions, special_needs, photo_permission,
             social_media_permission, notes, current_grade_id, main_dojo_id, status, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `, [
-        first_name, last_name, other_names, date_of_birth, gender,
+        first_name, last_name, other_names, date_of_birth, gender, instructor_role,
         address, phone_number, email, guardian_name, guardian_phone,
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,
@@ -282,11 +283,12 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
             }
             return true;
         }),
-    body('email').optional().isEmail().normalizeEmail()
+    body('email').optional().isEmail().normalizeEmail(),
+    body('instructor_role').optional().isIn(['main_instructor', 'senior_instructor', 'developing_instructor', 'student'])
 ], handleValidationErrors, (req, res) => {
     const { id } = req.params;
     const {
-        first_name, last_name, other_names, date_of_birth, gender,
+        first_name, last_name, other_names, date_of_birth, gender, instructor_role,
         address, phone_number, email, guardian_name, guardian_phone,
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,
@@ -296,7 +298,7 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
 
     db.run(`
         UPDATE members SET
-            first_name = ?, last_name = ?, other_names = ?, date_of_birth = ?, gender = ?,
+            first_name = ?, last_name = ?, other_names = ?, date_of_birth = ?, gender = ?, instructor_role = ?,
             address = ?, phone_number = ?, email = ?, guardian_name = ?, guardian_phone = ?,
             guardian_email = ?, guardian_relationship = ?, emergency_contact_name = ?,
             emergency_contact_phone = ?, emergency_contact_relationship = ?,
@@ -305,7 +307,7 @@ app.put('/api/members/:id', authenticateToken, requireRole(['admin', 'instructor
             updated_at = datetime('now')
         WHERE id = ?
     `, [
-        first_name, last_name, other_names, date_of_birth, gender,
+        first_name, last_name, other_names, date_of_birth, gender, instructor_role,
         address, phone_number, email, guardian_name, guardian_phone,
         guardian_email, guardian_relationship, emergency_contact_name,
         emergency_contact_phone, emergency_contact_relationship,

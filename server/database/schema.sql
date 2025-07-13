@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS members (
     other_names TEXT,
     date_of_birth DATE NOT NULL,
     gender TEXT CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+    instructor_role TEXT CHECK (instructor_role IN ('main_instructor', 'senior_instructor', 'developing_instructor', 'student')),
     address TEXT,
     phone_number TEXT,
     email TEXT,

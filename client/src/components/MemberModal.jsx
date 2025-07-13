@@ -24,6 +24,7 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
     other_names: '',
     date_of_birth: '',
     gender: '',
+    instructor_role: 'student',
     address: '',
     phone_number: '',
     email: '',
@@ -52,31 +53,32 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
   // Initialize form data when member prop changes
   useEffect(() => {
     if (member) {
-      setFormData({
-        first_name: member.first_name || '',
-        last_name: member.last_name || '',
-        other_names: member.other_names || '',
-        date_of_birth: member.date_of_birth || '',
-        gender: member.gender || '',
-        address: member.address || '',
-        phone_number: member.phone_number || '',
-        email: member.email || '',
-        guardian_name: member.guardian_name || '',
-        guardian_phone: member.guardian_phone || '',
-        guardian_email: member.guardian_email || '',
-        guardian_relationship: member.guardian_relationship || '',
-        emergency_contact_name: member.emergency_contact_name || '',
-        emergency_contact_phone: member.emergency_contact_phone || '',
-        emergency_contact_relationship: member.emergency_contact_relationship || '',
-        medical_conditions: member.medical_conditions || '',
-        special_needs: member.special_needs || '',
-        notes: member.notes || '',
-        current_grade_id: member.current_grade_id || '',
-        photo_permission: member.photo_permission || false,
-        social_media_permission: member.social_media_permission || false,
-        main_dojo_id: member.main_dojo_id || '',
-        status: member.status || 'active'
-      });
+              setFormData({
+          first_name: member.first_name || '',
+          last_name: member.last_name || '',
+          other_names: member.other_names || '',
+          date_of_birth: member.date_of_birth || '',
+          gender: member.gender || '',
+          instructor_role: member.instructor_role || 'student',
+          address: member.address || '',
+          phone_number: member.phone_number || '',
+          email: member.email || '',
+          guardian_name: member.guardian_name || '',
+          guardian_phone: member.guardian_phone || '',
+          guardian_email: member.guardian_email || '',
+          guardian_relationship: member.guardian_relationship || '',
+          emergency_contact_name: member.emergency_contact_name || '',
+          emergency_contact_phone: member.emergency_contact_phone || '',
+          emergency_contact_relationship: member.emergency_contact_relationship || '',
+          medical_conditions: member.medical_conditions || '',
+          special_needs: member.special_needs || '',
+          notes: member.notes || '',
+          current_grade_id: member.current_grade_id || '',
+          photo_permission: member.photo_permission || false,
+          social_media_permission: member.social_media_permission || false,
+          main_dojo_id: member.main_dojo_id || '',
+          status: member.status || 'active'
+        });
     }
   }, [member]);
 
@@ -151,6 +153,7 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
       }
     }
     if (!formData.gender) newErrors.gender = 'Gender is required';
+    if (!formData.instructor_role) newErrors.instructor_role = 'Instructor role is required';
     if (!formData.main_dojo_id) newErrors.main_dojo_id = 'Main dojo is required';
 
     // Email validation
@@ -349,6 +352,26 @@ const MemberModal = ({ member, dojos, grades, onClose, onSave }) => {
                   <option value="prefer_not_to_say">Prefer not to say</option>
                 </select>
                 {errors.gender && <p className="text-red-500 text-sm mt-1">{errors.gender}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Instructor Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="instructor_role"
+                  value={formData.instructor_role}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.instructor_role ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                >
+                  <option value="student">Student</option>
+                  <option value="developing_instructor">Developing Instructor</option>
+                  <option value="senior_instructor">Senior Instructor</option>
+                  <option value="main_instructor">Main Instructor</option>
+                </select>
+                {errors.instructor_role && <p className="text-red-500 text-sm mt-1">{errors.instructor_role}</p>}
               </div>
 
               <div>

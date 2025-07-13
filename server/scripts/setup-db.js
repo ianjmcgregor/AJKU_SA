@@ -101,6 +101,7 @@ function insertSampleData() {
             other_names: 'Michael',
             date_of_birth: '1990-05-15',
             gender: 'male',
+            instructor_role: 'senior_instructor',
             address: '123 Main Street, Anytown, AT 12345',
             phone_number: '555-0123',
             email: 'john.doe@email.com',
@@ -125,6 +126,7 @@ function insertSampleData() {
             other_names: 'Rose',
             date_of_birth: '2010-03-22',
             gender: 'female',
+            instructor_role: 'student',
             address: '456 Oak Avenue, Somewhere, ST 67890',
             phone_number: '555-0125',
             email: 'emily.smith@email.com',
@@ -149,6 +151,7 @@ function insertSampleData() {
             other_names: 'William',
             date_of_birth: '1985-11-08',
             gender: 'male',
+            instructor_role: 'developing_instructor',
             address: '789 Pine Street, Elsewhere, ET 11111',
             phone_number: '555-0128',
             email: 'rob.johnson@email.com',
@@ -173,6 +176,7 @@ function insertSampleData() {
             other_names: null,
             date_of_birth: '2008-07-12',
             gender: 'female',
+            instructor_role: 'student',
             address: '321 Elm Drive, Newtown, NT 22222',
             phone_number: '555-0130',
             email: null,
@@ -196,16 +200,16 @@ function insertSampleData() {
     sampleMembers.forEach(member => {
         db.run(`
             INSERT INTO members (
-                first_name, last_name, other_names, date_of_birth, gender,
+                first_name, last_name, other_names, date_of_birth, gender, instructor_role,
                 address, phone_number, email, guardian_name, guardian_phone,
                 guardian_email, guardian_relationship, emergency_contact_name,
                 emergency_contact_phone, emergency_contact_relationship,
                 medical_conditions, special_needs, photo_permission,
                 social_media_permission, notes, current_grade_id, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             member.first_name, member.last_name, member.other_names,
-            member.date_of_birth, member.gender, member.address,
+            member.date_of_birth, member.gender, member.instructor_role, member.address,
             member.phone_number, member.email, member.guardian_name,
             member.guardian_phone, member.guardian_email, member.guardian_relationship,
             member.emergency_contact_name, member.emergency_contact_phone,

@@ -86,6 +86,22 @@ const MembersPage = () => {
     return `px-2 py-1 text-xs font-medium rounded border ${colorClasses[gradeColor] || colorClasses.white}`;
   };
 
+  const getInstructorRoleBadge = (role) => {
+    const roleClasses = {
+      student: 'bg-gray-100 text-gray-800 border-gray-300',
+      developing_instructor: 'bg-blue-100 text-blue-800 border-blue-300',
+      senior_instructor: 'bg-purple-100 text-purple-800 border-purple-300',
+      main_instructor: 'bg-red-100 text-red-800 border-red-300'
+    };
+    const roleLabels = {
+      student: 'Student',
+      developing_instructor: 'Developing Instructor',
+      senior_instructor: 'Senior Instructor',
+      main_instructor: 'Main Instructor'
+    };
+    return `px-2 py-1 text-xs font-medium rounded border ${roleClasses[role] || roleClasses.student}`;
+  };
+
 
 
   const handleAddMember = () => {
@@ -253,6 +269,14 @@ const MembersPage = () => {
                           {member.current_grade && (
                             <span className={getGradeBadge(member.grade_color, member.current_grade)}>
                               {member.current_grade}
+                            </span>
+                          )}
+                          {member.instructor_role && (
+                            <span className={getInstructorRoleBadge(member.instructor_role)}>
+                              {member.instructor_role === 'student' ? 'Student' : 
+                               member.instructor_role === 'developing_instructor' ? 'Developing Instructor' :
+                               member.instructor_role === 'senior_instructor' ? 'Senior Instructor' :
+                               member.instructor_role === 'main_instructor' ? 'Main Instructor' : 'Student'}
                             </span>
                           )}
                         </div>

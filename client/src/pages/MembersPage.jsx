@@ -135,6 +135,27 @@ const MembersPage = () => {
     }
   };
 
+  const handleReactivateMember = async (memberId, memberName) => {
+    if (!window.confirm(`Are you sure you want to reactivate ${memberName}?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(`/api/members/${memberId}/reactivate`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setMembers(members.map(m => 
+        m.id === memberId ? { ...m, status: 'active' } : m
+      ));
+      toast.success('Member reactivated successfully');
+    } catch (error) {
+      toast.error('Failed to reactivate member');
+      console.error(error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -335,6 +356,17 @@ const MembersPage = () => {
                           title="Deactivate member"
                         >
                           <TrashIcon className="h-5 w-5" />
+                        </button>
+                      )}
+                      {member.status === 'inactive' && (
+                        <button
+                          onClick={() => handleReactivateMember(member.id, `${member.first_name} ${member.last_name}`)}
+                          className="text-green-600 hover:text-green-900 p-1"
+                          title="Reactivate member"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
                         </button>
                       )}
                     </div>

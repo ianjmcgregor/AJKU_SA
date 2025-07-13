@@ -355,6 +355,23 @@ app.delete('/api/members/:id', authenticateToken, requireRole(['admin', 'instruc
     });
 });
 
+app.patch('/api/members/:id/reactivate', authenticateToken, requireRole(['admin', 'instructor']), (req, res) => {
+    const { id } = req.params;
+    
+    db.run(`
+        UPDATE members SET status = 'active', updated_at = datetime('now') WHERE id = ?
+    `, [id], function(err) {
+        if (err) {
+            console.error('Error reactivating member:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Member not found' });
+        }
+        res.json({ message: 'Member reactivated successfully' });
+    });
+});
+
 // ATTENDANCE ROUTES
 app.get('/api/attendance', authenticateToken, (req, res) => {
     const { member_id, class_id, date_from, date_to, limit = 100, offset = 0 } = req.query;
